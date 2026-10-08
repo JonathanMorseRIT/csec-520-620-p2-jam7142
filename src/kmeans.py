@@ -101,77 +101,125 @@ class KMeansScratch:
 
     # -- the three steps you implement -------------------------------------
     def _init_centroids(self, X: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-        """Choose ``self.k`` initial centroids and return them as a (k, d) array.
+        n = X.shape[0]
 
-        Support both settings of ``self.init``:
-          "random"   — pick k distinct rows of X uniformly at random.
-          "kmeans++" — pick the first centroid at random, then pick each next
-                       centroid with probability proportional to its squared
-                       distance to the NEAREST already-chosen centroid. This
-                       spreads centroids out and avoids bad local optima.
+        if self.init == "random":
+            indices = rng.choice(n, size=self.k, replace=False)
+            return X[indices].copy()
 
-        Use ``rng`` (a numpy Generator) for every random draw so runs are
-        reproducible. ``self._sqdist`` gives you the distances you need.
+        elif self.init == "kmeans++":
+            first_idx = rng.integers(n)
+            centroids = [X[first_idx].copy()]
 
-        TODO(student): implement this.
-        """
-        raise NotImplementedError(
-            "Implement _init_centroids in src/kmeans.py (Project 2, Task 1)."
-        )
+            selected_indices = [first_idx]
+
+            while len(centroids) < self.k:
+                current_centroids = np.array(centroids)
+
+
+                distances = self._sqdist(X, current_centroids)
+
+                nearest_dist = np.min(distances, axis=1)
+
+                total_dist = np.sum(nearest_dist)
+
+                if total_dist == 0:
+                    remaining = [
+                        i for i in range(n)
+                        if i not in selected_indices
+                    ]
+
+                    next_idx = rng.choice(remaining)
+
+                else:
+                    probabilities = nearest_dist / total_dist
+                    next_idx = rng.choice(n, p=probabilities)
+
+                selected_indices.append(next_idx)
+                centroids.append(X[next_idx].copy())
+
+            return np.array(centroids)
+
+        else:
+            raise ValueError(f"Unknown initialization method: {self.init}")
+
+
+
 
     def _assign(self, X: np.ndarray, centroids: np.ndarray) -> np.ndarray:
-        """Assignment step: index of the nearest centroid for each point.
 
-        Returns an int64 array of shape (n,) with values in [0, k).
-
-        TODO(student): implement this.
-          Hint: one call to ``self._sqdist`` plus an argmin along the right axis.
-        """
-        raise NotImplementedError(
-            "Implement _assign in src/kmeans.py (Project 2, Task 1)."
-        )
+        distances = self._sqdist(X, centroids)
+        labels = np.argmin(distances, axis=1).astype("int64")
+        return labels
 
     def _update(self, X: np.ndarray, labels: np.ndarray, centroids: np.ndarray) -> np.ndarray:
-        """Update step: move each centroid to the mean of its assigned points.
 
-        Watch out for **empty clusters** — a centroid with no points assigned has
-        no mean. A common fix is to leave it where it is, or re-seed it at the
-        point furthest from its centroid. Say which you chose in your report.
+        new_centroids = centroids.copy()
 
-        Returns the new (k, d) centroids.
+        for i in range(self.k):
+            cluster_p = X[labels == i]
 
-        TODO(student): implement this.
-        """
-        raise NotImplementedError(
-            "Implement _update in src/kmeans.py (Project 2, Task 1)."
-        )
+            if cluster_p.shape[0] > 0:
+                new_centroids[i] = np.mean(cluster_p, axis=0)
+
+        return new_centroids
 
     # -- the fit loop you implement ----------------------------------------
     def fit(self, X: np.ndarray) -> "KMeansScratch":
-        """Run Lloyd's algorithm with ``self.n_init`` random restarts.
+        rng = np.random.default_rng(self.seed)
 
-        For each restart:
-            1. initialize centroids            (``self._init_centroids``)
-            2. repeat up to ``self.max_iter``:
-                 a. labels = assignment step   (``self._assign``)
-                 b. new_centroids = update     (``self._update``)
-                 c. stop when the centroids move less than ``self.tol``
-                    (or when the labels stop changing)
-            3. compute inertia J = sum of squared distances of each point to
-               its assigned centroid
+        best_inertia = np.inf
+        best_centroids = None
+        best_labels = None
+        best_n_iter = None
 
-        Keep the restart with the LOWEST inertia, and set:
-            self.centroids_, self.labels_, self.inertia_, self.n_iter_
+        for _ in range(self.n_init):
 
-        Return ``self``.
+            centroids = self._init_centroids(X, rng)
 
-        TODO(student): implement this.
-          Seed your generator with ``np.random.default_rng(self.seed)`` once,
-          outside the restart loop, so all restarts are reproducible but distinct.
-        """
-        raise NotImplementedError(
-            "Implement fit in src/kmeans.py (Project 2, Task 1)."
-        )
+            old_labels = None
+
+            for iteration in range(1, self.max_iter + 1):
+
+                labels = self._assign(X, centroids)
+
+                new_centroids = self._update(X, labels, centroids)
+
+                shifts = np.linalg.norm(new_centroids - centroids, axis=1)
+                max_shift = np.max(shifts)
+
+                labels_unchanged = (
+                    old_labels is not None
+                    and np.array_equal(labels, old_labels)
+                )
+
+                centroids = new_centroids
+
+                if max_shift < self.tol or labels_unchanged:
+                    break
+
+                old_labels = labels.copy()
+
+            labels = self._assign(X, centroids)
+
+            distances = self._sqdist(X, centroids)
+
+            inertia = np.sum(
+                distances[np.arange(X.shape[0]), labels]
+            )
+
+            if inertia < best_inertia:
+                best_inertia = inertia
+                best_centroids = centroids.copy()
+                best_labels = labels.copy()
+                best_n_iter = iteration
+
+        self.centroids_ = best_centroids
+        self.labels_ = best_labels
+        self.inertia_ = best_inertia
+        self.n_iter_ = best_n_iter
+
+        return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Assign new points to the fitted centroids."""

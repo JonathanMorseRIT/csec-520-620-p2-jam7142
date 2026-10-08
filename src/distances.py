@@ -28,30 +28,10 @@ def euclidean_sqdist(X: np.ndarray, C: np.ndarray) -> np.ndarray:
 
 
 def mahalanobis_sqdist(X: np.ndarray, C: np.ndarray, diag: np.ndarray) -> np.ndarray:
-    """Simplified (diagonal) Mahalanobis squared distance.
+    diff = X[:, None, :] - C[None, :, :]
 
-    With a positive diagonal matrix ``C_mat = diag(c_1, ..., c_d)``:
+    squared_diff = diff ** 2
 
-        d(x, mu)^2 = (x - mu)^T C_mat (x - mu) = sum_f c_f * (x_f - mu_f)^2
+    weighted_squared_diff = squared_diff * diag
 
-    i.e. a *weighted* Euclidean distance: each feature f is scaled by c_f.
-    Setting every c_f = 1 recovers plain Euclidean distance.
-
-    Parameters
-    ----------
-    X    : (n, d) data
-    C    : (k, d) centroids
-    diag : (d,) strictly positive per-feature weights
-
-    Returns
-    -------
-    (n, k) array of squared Mahalanobis distances.
-
-    TODO(student): implement this.
-      Hint: start from `euclidean_sqdist` above and weight the squared
-      per-feature differences by `diag` before summing over d.
-      Keep it vectorized — no Python loop over n.
-    """
-    raise NotImplementedError(
-        "Implement mahalanobis_sqdist in src/distances.py (Project 2, Task 4)."
-    )
+    return np.sum(weighted_squared_diff, axis=2)
